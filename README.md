@@ -105,7 +105,3 @@ Die App unterstützt:
 ## 📌 Empfehlung
 
 Für eine vollständige Produktivstellung sollte das Backend mit sicherer Authentifizierung, robustem Fehlerhandling und einem Asset-Management für Ergebnisse erweitert werden.
-
----
-
-Wenn du möchtest, kann ich auch eine `LICENSE` hinzufügen oder die README um eine Design-Architektur mit Klassendiagramm ergänzen.
