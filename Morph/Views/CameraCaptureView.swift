@@ -165,8 +165,7 @@ private final class CameraViewModel: NSObject, AVCaptureFileOutputRecordingDeleg
     func setupSession() {
         #if targetEnvironment(simulator)
         return
-        #endif
-        
+        #else
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
             guard !self.captureSession.isRunning else { return }
@@ -204,6 +203,7 @@ private final class CameraViewModel: NSObject, AVCaptureFileOutputRecordingDeleg
             self.captureSession.commitConfiguration()
             self.captureSession.startRunning()
         }
+        #endif
     }
     
     func stopSession() {
@@ -218,8 +218,7 @@ private final class CameraViewModel: NSObject, AVCaptureFileOutputRecordingDeleg
     func toggleCamera() {
         #if targetEnvironment(simulator)
         return
-        #endif
-        
+        #else
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
             guard let currentInput = self.videoInput else { return }
@@ -244,14 +243,15 @@ private final class CameraViewModel: NSObject, AVCaptureFileOutputRecordingDeleg
             
             self.captureSession.commitConfiguration()
         }
+        #endif
     }
     
     func startRecording() {
-        #if targetEnvironment(simulator)
-        isRecording = true
-        // Create an empty dummy file for Simulator preview fallback
         let tempDirectory = FileManager.default.temporaryDirectory
         let fileURL = tempDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        
+        #if targetEnvironment(simulator)
+        isRecording = true
         // Just write some placeholder text/dummy bytes to mock a file url
         try? "Dummy Video Data".write(to: fileURL, atomically: true, encoding: .utf8)
         
@@ -260,32 +260,35 @@ private final class CameraViewModel: NSObject, AVCaptureFileOutputRecordingDeleg
             self.isRecording = false
             self.onVideoOutput?(fileURL)
         }
-        return
-        #endif
-        
+        #else
         guard let connection = movieOutput.connection(with: .video) else { return }
         // Force portrait orientation output
-        if connection.isVideoOrientationSupported {
-            connection.videoOrientation = .portrait
+        if #available(iOS 17.0, *) {
+            if connection.isVideoRotationAngleSupported(90.0) {
+                connection.videoRotationAngle = 90.0
+            }
+        } else {
+            if connection.isVideoOrientationSupported {
+                connection.videoOrientation = .portrait
+            }
         }
-        
-        let tempDirectory = FileManager.default.temporaryDirectory
-        let fileURL = tempDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
         
         movieOutput.startRecording(to: fileURL, recordingDelegate: self)
         isRecording = true
+        #endif
     }
     
     func stopRecording() {
         #if targetEnvironment(simulator)
         return
-        #endif
+        #else
         movieOutput.stopRecording()
         isRecording = false
+        #endif
     }
     
     // MARK: - AVCaptureFileOutputRecordingDelegate
-    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingAt fileURL: URL, from connections: [AVCaptureConnection]) {
+    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
         print("Camera capture recording started.")
     }
     

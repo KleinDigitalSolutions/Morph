@@ -1,7 +1,7 @@
 import Foundation
 
-public struct RenderTask: Codable, Identifiable, Equatable {
-    public enum Status: String, Codable, Equatable {
+public struct RenderTask: Codable, Identifiable, Equatable, Hashable {
+    public enum Status: String, Codable, Equatable, Hashable {
         case queued = "queued"
         case processing = "processing"
         case completed = "completed"

@@ -113,7 +113,7 @@ public struct WorkspaceView: View {
                                 PhotosPicker(
                                     selection: $videoPickerItem,
                                     matching: .videos,
-                                    preferredItemEncoding: .currentAndCompatible
+                                    preferredItemEncoding: .compatible
                                 ) {
                                     VStack(spacing: 12) {
                                         Image(systemName: "photo.on.rectangle.angled")
@@ -266,7 +266,7 @@ public struct WorkspaceView: View {
                     // GENERATE BUTTON
                     Button {
                         Task {
-                            await stateManager.startUploadAndProcess()
+                            await stateManager.dispatchRenderTask()
                         }
                     } label: {
                         HStack {

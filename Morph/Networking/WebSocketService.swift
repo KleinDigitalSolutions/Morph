@@ -24,8 +24,6 @@ public final class WebSocketService: NSObject, Sendable {
         webSocketTask.resume()
         
         return AsyncStream { continuation in
-            let isRunning = Set<String>()
-            
             // Set up a task to read messages continuously
             let readTask = Task {
                 defer {
@@ -65,7 +63,7 @@ public final class WebSocketService: NSObject, Sendable {
                                 return Date()
                             }
                             
-                            let updatedTask = try decoder.decode(RenderTask.self)
+                            let updatedTask = try decoder.decode(RenderTask.self, from: data)
                             continuation.yield(updatedTask)
                             
                             // If task reaches final state, terminate stream

@@ -69,7 +69,7 @@ public final class APIClient: NSObject, Sendable {
         // Helper to write text strings
         func write(_ string: String) throws {
             guard let data = string.data(using: .utf8) else { return }
-            _ = data.withUnsafeBytes { buffer in
+            data.withUnsafeBytes { buffer in
                 if let baseAddress = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) {
                     stream.write(baseAddress, maxLength: data.count)
                 }
@@ -78,7 +78,7 @@ public final class APIClient: NSObject, Sendable {
         
         // Helper to write binary data
         func write(_ data: Data) throws {
-            _ = data.withUnsafeBytes { buffer in
+            data.withUnsafeBytes { buffer in
                 if let baseAddress = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) {
                     stream.write(baseAddress, maxLength: data.count)
                 }
@@ -132,79 +132,45 @@ public final class APIClient: NSObject, Sendable {
         request.setValue("\(fileSize)", forHTTPHeaderField: "Content-Length")
         
         // Perform Upload with Progress Tracking
-        return try await withCheckedThrowingContinuation { continuation in
-            let uploadTask = session.uploadTask(with: request, fromFile: tempFileURL) { data, response, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    continuation.resume(throwing: URLError(.badServerResponse))
-                    return
-                }
-                
-                guard (200...299).contains(httpResponse.statusCode) else {
-                    let errMsg = data.flatMap { String(data: $0, encoding: .utf8) } ?? "HTTP \(httpResponse.statusCode)"
-                    continuation.resume(throwing: NSError(domain: "APIClient", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errMsg]))
-                    return
-                }
-                
-                guard let data = data else {
-                    continuation.resume(throwing: URLError(.zeroByteResource))
-                    return
-                }
-                
-                do {
-                    let decoder = JSONDecoder()
-                    // Configure decoder to parse ISO8601 dates properly
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
-                    decoder.dateDecodingStrategy = .custom { decoder in
-                        let container = try decoder.singleValueContainer()
-                        let dateStr = try container.decode(String.self)
-                        if let date = formatter.date(from: dateStr) {
-                            return date
-                        }
-                        // Fallback options
-                        let fallbackFormatters = [
-                            "yyyy-MM-dd'T'HH:mm:ssZ",
-                            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS",
-                            "yyyy-MM-dd'T'HH:mm:ss"
-                        ]
-                        for fStr in fallbackFormatters {
-                            let f = DateFormatter()
-                            f.dateFormat = fStr
-                            if let date = f.date(from: dateStr) {
-                                return date
-                            }
-                        }
-                        return Date()
-                    }
-                    
-                    let task = try decoder.decode(RenderTask.self)
-                    continuation.resume(returning: task)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-            
-            // Set up observation on the uploadTask for real-time progress
-            var observation: NSKeyValueObservation?
-            if let onUploadProgress = onUploadProgress {
-                observation = uploadTask.observe(\.countOfBytesSent, options: .new) { task, _ in
-                    let progress = Double(task.countOfBytesSent) / Double(max(1, task.countOfBytesExpectedToSend))
-                    onUploadProgress(progress)
-                }
-            }
-            
-            uploadTask.resume()
-            
-            // Keep reference to observation alive during upload
-            if let observation = observation {
-                objc_setAssociatedObject(uploadTask, UnsafeRawPointer(bitPattern: 1)!, observation, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-            }
+        let delegate = onUploadProgress.map { UploadProgressDelegate(onProgress: $0) }
+        let (data, response) = try await session.upload(for: request, fromFile: tempFileURL, delegate: delegate)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
         }
+        
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errMsg = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
+            throw NSError(domain: "APIClient", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errMsg])
+        }
+        
+        let decoder = JSONDecoder()
+        // Configure decoder to parse ISO8601 dates properly
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateStr = try container.decode(String.self)
+            if let date = formatter.date(from: dateStr) {
+                return date
+            }
+            // Fallback options
+            let fallbackFormatters = [
+                "yyyy-MM-dd'T'HH:mm:ssZ",
+                "yyyy-MM-dd'T'HH:mm:ss.SSSSSS",
+                "yyyy-MM-dd'T'HH:mm:ss"
+            ]
+            for fStr in fallbackFormatters {
+                let f = DateFormatter()
+                f.dateFormat = fStr
+                if let date = f.date(from: dateStr) {
+                    return date
+                }
+            }
+            return Date()
+        }
+        
+        return try decoder.decode(RenderTask.self, from: data)
     }
     
     /// Fallback long-polling method to query task status
@@ -222,7 +188,7 @@ public final class APIClient: NSObject, Sendable {
         
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(RenderTask.self)
+        return try decoder.decode(RenderTask.self, from: data)
     }
     
     /// Fetch history of past tasks completed by the backend
@@ -240,6 +206,26 @@ public final class APIClient: NSObject, Sendable {
         
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode([RenderTask].self)
+        return try decoder.decode([RenderTask].self, from: data)
+    }
+}
+
+// MARK: - UploadProgressDelegate Helper
+private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    let onProgress: @Sendable (Double) -> Void
+    
+    init(onProgress: @escaping @Sendable (Double) -> Void) {
+        self.onProgress = onProgress
+    }
+    
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        let progress = Double(totalBytesSent) / Double(max(1, totalBytesExpectedToSend))
+        onProgress(progress)
     }
 }

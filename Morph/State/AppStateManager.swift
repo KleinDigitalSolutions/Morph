@@ -34,6 +34,12 @@ public final class AppStateManager: Sendable {
     
     /// Starts the upload process and binds to WebSocket updates
     @MainActor
+    public func dispatchRenderTask() async {
+        await startUploadAndProcess()
+    }
+    
+    /// Starts the upload process and binds to WebSocket updates
+    @MainActor
     public func startUploadAndProcess() async {
         guard let mode = currentMode else {
             self.errorMessage = "Please select a processing mode first."
