@@ -21,6 +21,17 @@ Die App unterstützt:
 - Übersicht über vergangene Transformationen
 - Vorher/Nachher-Vergleich und Teilen fertiger Ergebnisse
 
+## 🎬 Demo Vorschau
+
+![Mode Selection](docs/screenshots/demo-mode-selection.png)
+*Modusauswahl mit vier KI-Transformationsvarianten.*
+
+![Dashboard](docs/screenshots/demo-dashboard.png)
+*Startseite mit Studio-Branding und Verlaufserstellung.*
+
+![Workspace](docs/screenshots/demo-workspace.png)
+*Workspace-Flow mit Videoquelle, Referenzen und Prompt-Eingabe.*
+
 ## 🧩 Architektur
 
 ### Frontend
